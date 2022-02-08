@@ -32,6 +32,8 @@ if (projectType === 'pattern') {
 	rootPath = path.join(auditPath, componentPath);
 }
 
+const templatesThatPassed = [];
+
 if (!fs.existsSync(path.join(theCwd, rootPath))){
 	fs.mkdirSync(path.join(theCwd, rootPath), { recursive: true });
 }
@@ -69,8 +71,9 @@ async function buildHtmlFiles(files) {
 				'axe',
 				'htmlcs'
 			],
-			standard: 'WCAG2A',
-			includeWarnings: true
+			standard: 'WCAG2AA',
+			includeWarnings: true,
+			threshold: 20
 		};
 
 		let promises = [];
@@ -78,6 +81,10 @@ async function buildHtmlFiles(files) {
 		for (const i in files) {
 
 			const result = await pa11y(path.join(deployDir, files[i]), options);
+
+			if (result.issues.length === 0) {
+				templatesThatPassed[files[i]] = true;
+			}
 
 			result.pageUrl = files[i];
 
@@ -103,10 +110,13 @@ async function buildHtmlFiles(files) {
 
 						auditResults.push({
 							'label': files[i],
-							'url': path.join(componentPath, files[i])
+							'url': path.join(componentPath, files[i]),
+							'passed': (typeof templatesThatPassed[files[i]] !== 'undefined')
 						});
 
 					}
+
+					console.log(auditResults);
 
 					console.log(path.join(theCwd, auditPath, 'index.html'));
 
@@ -133,6 +143,27 @@ async function buildHtmlFiles(files) {
 	}
 
 }
+
+
+
+const nodeW3CValidator = require('node-w3c-validator');
+
+const validatePath = path.join(rootPath, '*.html');
+
+const resultOutput = path.join(auditPath, '/reports/**/*.html');
+
+nodeW3CValidator(validatePath, {
+	format: 'html',
+	skipNonHtml: true,
+	verbose: true
+}, function (err, output) {
+	if (err === null) {
+		return;
+	}
+	nodeW3CValidator.writeFile(resultOutput, output);
+});
+
+
 
 //
 // runExample();

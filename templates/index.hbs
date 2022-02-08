@@ -5,6 +5,9 @@
 	<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
 	<meta http-equiv="X-UA-Compatible" content="ie=edge">
 	<title>Accessibility Audit Index</title>
+
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/foundation-sites@6.7.4/dist/css/foundation.min.css" crossorigin="anonymous">
+
 </head>
 <body>
 
@@ -13,10 +16,12 @@
 	{{#if results}}
 		<ul>
 			{{#each results}}
-				<li><a href="{{this.url}}">{{this.label}}</a></li>
+				<li><a href="{{this.url}}">{{this.label}}</a>{{#if this.passed}} - Passed!{{/if}}</li>
 			{{/each}}
 		</ul>
 	{{/if}}
+
+	<script src="https://cdn.jsdelivr.net/npm/foundation-sites@6.7.4/dist/js/foundation.min.js" crossorigin="anonymous"></script>
 
 </body>
 </html>
