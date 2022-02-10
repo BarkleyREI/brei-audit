@@ -1,6 +1,3 @@
-#!/usr/bin/env node
-
-// An example of running Pa11y on multiple URLS
 'use strict';
 
 const pa11y = require('pa11y');
@@ -10,212 +7,167 @@ const path = require('path');
 const glob = require('glob');
 const Handlebars = require('handlebars');
 const open = require('open');
+const turndown = require('turndown');
 
-const indexTemplateStr = fs.readFileSync(path.resolve(__dirname, 'templates/index.hbs')).toString('utf8');
-const indexTemplate = Handlebars.compile(indexTemplateStr);
+const audit = module.exports = {
 
-const theCwd = process.cwd();
+	convertHtmlToMarkdown: (html) => {
 
-const breiConfig = require(theCwd + '/_config/_brei.json');
+		const tds = new turndown();
 
-const projectType = breiConfig['type'];
-let deployDir = breiConfig['deploy'];
+		tds.remove(['head', 'style']);
 
-const auditPath = 'audit';
-let componentPath = 'pages';
-let rootPath = path.join(auditPath, componentPath);
+		const md = tds.turndown(html);
 
-if (projectType === 'pattern') {
-	componentPath = 'components';
+		return md;
 
-	deployDir = path.join(deployDir, 'components/preview');
-	rootPath = path.join(auditPath, componentPath);
-}
+	},
 
-const templatesThatPassed = [];
-
-if (!fs.existsSync(path.join(theCwd, rootPath))){
-	fs.mkdirSync(path.join(theCwd, rootPath), { recursive: true });
-}
-
-glob('*.html', {
-	cwd: deployDir
-}, (err, files) => {
-
-	if (!err) {
-		buildHtmlFiles(files);
-	}
-
-});
-
-function writeHtmlFile(file, contents) {
-	return new Promise((resolve, reject) => {
-		fs.writeFile(file, contents, {}, err => {
-			if (err) {
-				reject(err);
-			} else {
-				console.log('Audit created: ' + file);
-				resolve();
-			}
+	writeHtmlFile: (file, contents) => {
+		return new Promise((resolve, reject) => {
+			fs.writeFile(file, contents, {}, err => {
+				if (err) {
+					reject(err);
+				} else {
+					console.log('Audit created: ' + file);
+					resolve();
+				}
+			});
 		});
-	});
-}
+	},
 
-async function buildHtmlFiles(files) {
+	getAccessibilityData: async (component, url, opts) => {
 
-	try {
+		const result = await pa11y(url, opts);
 
-		const options = {
-			reporter: 'html',
-			runners: [
-				'axe',
-				'htmlcs'
-			],
-			standard: 'WCAG2AA',
-			includeWarnings: true,
-			threshold: 20
-		};
+		result.pageUrl = component.handle;
 
-		let promises = [];
+		return result;
 
-		for (const i in files) {
+	},
 
-			const result = await pa11y(path.join(deployDir, files[i]), options);
+	getAccessibilityHtml: async (component, url, opts) => {
 
-			if (result.issues.length === 0) {
-				templatesThatPassed[files[i]] = true;
-			}
+		const result = audit.getAccessibilityData(component, url, opts);
 
-			result.pageUrl = files[i];
+		return await htmlReporter.results(result);
 
-			let html = await htmlReporter.results(result);
+	},
 
-			promises.push(writeHtmlFile(path.join(rootPath, files[i]), html));
+	getAccessibilityMarkdown: async (component, url, opts) => {
+
+		const html = audit.getAccessibilityHtml(component, url, opts);
+
+		let md = audit.convertHtmlToMarkdown(html);
+
+		let intro = '---\n';
+		intro += 'title: "Audit results for ' + component.handle + '"\n';
+		intro += 'label: "' + component.label + '"\n';
+		intro += '---\n\n';
+
+		md = intro + md;
+
+		return md;
+
+	},
+
+	writeAccessibilityFile: (component, scanDir, deployDir) => {
+
+		return new Promise((resolve) => {
+			audit.getAccessibilityMarkdown(component, path.join(scanDir, component.handle + '.html')).then(function (res) {
+
+				// fs.writeFile('docs/audit/' + component.handle + '.html', res, () => {});
+				fs.writeFile(deployDir + '/aa-' + component.handle + '.md', red, err => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
+					}
+				});
+			});
+		});
+
+	},
+
+	buildAuditFile: async (component, url, dest, opts) => {
+
+		let html = await audit.getAccessibilityMarkdown(component, url, opts);
+
+		audit.writeHtmlFile(dest, html).then(function () {
+
+		}, function (err) {
+			console.log(err);
+		});
+
+	},
+
+	getFractalComponents: (fractal) => {
+
+		let comps = [];
+
+		// console.log(fractal._items);
+
+		for (let item of fractal._items) {
+
+			let ccc = audit.getComponentsFromItem(item);
+
+			comps = comps.concat(audit.getComponentsFromItem(item));
+
+			// console.log(item);
 
 		}
 
-		Promise.all(promises).catch(err => {
-			console.log(err);
-		}).finally(_ => {
+		return comps;
 
-			let auditResults = [];
+	},
 
-			glob('*.html', {
-				cwd: rootPath
-			}, (err, files) => {
+	getComponentsFromItem: (item) => {
 
-				if (!err) {
+		// console.log(item);
 
-					for (const i in files) {
+		let ret = [];
 
-						auditResults.push({
-							'label': files[i],
-							'url': path.join(componentPath, files[i]),
-							'passed': (typeof templatesThatPassed[files[i]] !== 'undefined')
-						});
+		if (!item._isHidden) {
 
-					}
+			if (item.isCollection) {
 
-					console.log(auditResults);
-
-					console.log(path.join(theCwd, auditPath, 'index.html'));
-
-					fs.writeFile(path.join(auditPath, 'index.html'), indexTemplate({ results: auditResults }), {}, err => {
-						if (err) {
-							console.log(err);
-						} else {
-							console.log('Index written');
-
-							open(path.join(theCwd, auditPath, 'index.html'));
-
-						}
-					});
-
+				for (let i of item._items) {
+					ret = ret.concat(audit.getComponentsFromItem(i));
 				}
 
-			});
+			} else {
+				ret.push(item);
 
-			console.log('done');
-		});
+				ret = ret.concat(audit.getVariantsFromItem(item));
+			}
 
-	} catch (error) {
-		console.error(error.message);
+		}
+
+		return ret;
+
+	},
+
+	getVariantsFromItem: (item) => {
+
+		let ret = [];
+		let variants = item._variants;
+
+		// console.log(variants);
+
+		if (variants._items.size > 1) {
+
+			for (let i of variants._items) {
+				// console.log(i);
+
+				ret.push(i);
+			}
+
+		}
+
+		// console.log(ret);
+
+		return ret;
+
 	}
 
-}
-
-
-
-const nodeW3CValidator = require('node-w3c-validator');
-
-const validatePath = path.join(rootPath, '*.html');
-
-const resultOutput = path.join(auditPath, '/reports/**/*.html');
-
-nodeW3CValidator(validatePath, {
-	format: 'html',
-	skipNonHtml: true,
-	verbose: true
-}, function (err, output) {
-	if (err === null) {
-		return;
-	}
-	nodeW3CValidator.writeFile(resultOutput, output);
-});
-
-
-
-//
-// runExample();
-//
-// // Async function required for us to use await
-// async function runExample() {
-// 	try {
-//
-// 		// Put together some options to use in each test
-// 		const options = {
-// 			reporter: 'html',
-// 			log: {
-// 				debug: console.log,
-// 				error: console.error,
-// 				info: console.log
-// 			},
-// 			runners: [
-// 				'axe',
-// 				'htmlcs'
-// 			],
-// 			standard: 'WCAG2A',
-// 			includeWarnings: true
-// 		};
-//
-// 		// Run tests against multiple URLs
-// 		const results = await Promise.all([
-// 			pa11y('web/components/preview/sidebar.html', options)
-// 		]);
-//
-// 		let fileName = 'sidebar.html';
-// 		let stream = fs.createWriteStream(fileName);
-//
-// 		results[0].pageUrl = 'sidebar.html';
-//
-//
-// 		// Output the raw result objects
-// 		let html = await htmlReporter.results(results[0]);
-//
-//
-// 		fs.writeFileSync('sidebar.html', html, err => {
-// 			if (err) {
-// 				console.error(err);
-// 				return;
-// 			}
-// 		});
-//
-// 		console.log(results[0]); // Results for the first URL
-//
-// 	} catch (error) {
-//
-// 		// Output an error if it occurred
-// 		console.error(error.message);
-//
-// 	}
-// }
+};
