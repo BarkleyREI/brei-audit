@@ -11,10 +11,11 @@ const glob = require('glob');
 const Handlebars = require('handlebars');
 const open = require('open');
 
-const indexTemplateStr = fs.readFileSync(path.resolve(__dirname, 'templates/index.hbs')).toString('utf8');
+const theCwd = process.cwd();
+
+const indexTemplateStr = fs.readFileSync(path.resolve(__dirname, '../templates/index.hbs')).toString('utf8');
 const indexTemplate = Handlebars.compile(indexTemplateStr);
 
-const theCwd = process.cwd();
 
 const breiConfig = require(theCwd + '/_config/_brei.json');
 
@@ -66,7 +67,7 @@ async function buildHtmlFiles(files) {
 	try {
 
 		const options = {
-			reporter: 'html',
+			reporter: 'json',
 			runners: [
 				'axe',
 				'htmlcs'
@@ -81,6 +82,8 @@ async function buildHtmlFiles(files) {
 		for (const i in files) {
 
 			const result = await pa11y(path.join(deployDir, files[i]), options);
+			
+			console.log(result);
 
 			if (result.issues.length === 0) {
 				templatesThatPassed[files[i]] = true;
